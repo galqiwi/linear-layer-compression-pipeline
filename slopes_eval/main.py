@@ -457,7 +457,8 @@ def eval_ppl_by_config(args, model, layerwise_edenn_config):
             ppl = llama_eval(model, dataloader, DEV)
 
         model.to('meta')
-        orig_model.to('meta')
+        if orig_model is not None:
+            orig_model.to('meta')
 
         return ppl
 
