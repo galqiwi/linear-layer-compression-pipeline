@@ -276,6 +276,7 @@ def get_zero_shots(model, task_list = ('arc_easy',), num_fewshots=1):
 
     lm_eval_model = lm_eval.models.huggingface.HFLM(
         pretrained=model,
+        batch_size=64,
     )
 
     tasks = lm_eval.tasks.get_task_dict(task_list)
@@ -413,7 +414,22 @@ def main():
     if args.skip_zeroshots:
         return
 
-    model = model.to(DEV)
+    if torch.cuda.device_count() > 1:
+        # Inference of Llama2-70b on 3 80GB GPUs
+        import accelerate
+
+        n_devices = torch.cuda.device_count()
+
+        device_map = accelerate.infer_auto_device_map(model, max_memory={device_idx: "55GB" for device_idx in range(n_devices)}, no_split_module_classes=['LlamaDecoderLayer'])
+
+        print(device_map)
+
+        assert 'disk' not in set(device_map.values())
+
+        model = accelerate.dispatch_model(model, device_map=device_map)
+    else:
+        model = model.to(DEV)
+
     wandb.log(get_zero_shots(model, task_list=['winogrande','piqa','hellaswag', 'arc_easy','arc_challenge'], num_fewshots=1))
     wandb.log(
         filter_dict(
