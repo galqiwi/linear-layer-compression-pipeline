@@ -25,8 +25,8 @@ import io
 
 def get_af4_grid(block_size):
     url = (
-            'https://github.com/galqiwi/linear-layer-compression/raw/' +
-            f'fb093fe7fe4a50a7ee357a148a6da512cf114786/Vladimir/2024-09-28/af4_{block_size}.pt'
+            'https://github.com/galqiwi/linear-layer-compression-pipeline/raw/' +
+            f'5dbca968897883435db856549a7d57da14ca14ae/2024-09-28/af4_{block_size}.pt'
     )
     return torch.load(io.BytesIO(requests.get(url).content))
 
