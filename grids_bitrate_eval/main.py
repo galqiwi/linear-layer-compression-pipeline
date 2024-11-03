@@ -527,7 +527,7 @@ def main():
         if 'lm_head' not in layer
     ])
 
-    model = model.half().cuda()
+    model = model
 
     if args.grid == "nf4":
         codes = NF4_CODES
@@ -547,13 +547,16 @@ def main():
 
         if args.do_hadamard:
             new_linear = NoisyHadamarLinear(linear.weight, linear.bias, had_block_size=args.hadamard_groupsize)
-            new_linear.inner.weight.data = quantize_dequantize_weight(new_linear.inner.weight, codes=codes.half(),
+            new_linear.inner.weight.data = quantize_dequantize_weight(new_linear.inner.weight.cuda(), codes=codes.half(),
                                                                       block_size=args.block_size).cuda()
             set_module_by_path(model, layer, new_linear)
+            linear.to('meta')
+            new_linear.cpu()
             continue
 
-        linear.weight.data = quantize_dequantize_weight(linear.weight, codes=codes.half(),
-                                                        block_size=args.block_size).cuda()
+        linear.weight.data = quantize_dequantize_weight(linear.weight.cuda(), codes=codes.half(),
+                                                        block_size=args.block_size).cpu()
+        linear.cpu()
 
     model = model.half()
 
