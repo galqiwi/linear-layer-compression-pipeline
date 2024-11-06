@@ -524,7 +524,7 @@ def get_old_run(args):
     if len(old_runs) == 0:
         return None
     print(old_runs)
-    return dict(old_runs.sort_values('_timestamp').iloc[-1])
+    return dict(old_runs.iloc[-1])
 
 ###
 
