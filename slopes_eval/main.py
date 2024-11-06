@@ -617,6 +617,9 @@ def main():
     if old_run is not None:
         old_ppl_delta_by_layer_name_in_progress = old_run.get('ppl_delta_by_layer_name_in_progress', {})
 
+    if not isinstance(old_ppl_delta_by_layer_name_in_progress, dict):
+        old_ppl_delta_by_layer_name_in_progress = {}
+
     print(old_ppl_delta_by_layer_name_in_progress)
 
     for layer_idx, layer_name in enumerate(layers):
