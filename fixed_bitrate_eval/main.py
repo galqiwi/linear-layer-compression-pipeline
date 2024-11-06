@@ -361,6 +361,12 @@ def main():
         help='EDENN grid size'
     )
     parser.add_argument(
+        '--zeroshot-batch-size', type=int, required=False, default=1,
+    )
+    parser.add_argument(
+        '--mmlu-batch-size', type=int, required=False, default=1,
+    )
+    parser.add_argument(
         '--skip-zeroshots', action='store_true', help='Skip zero-shot evaluations.'
     )
 
@@ -430,10 +436,15 @@ def main():
     else:
         model = model.to(DEV)
 
-    wandb.log(get_zero_shots(model, task_list=['winogrande','piqa','hellaswag', 'arc_easy','arc_challenge'], num_fewshots=1))
+    wandb.log(get_zero_shots(
+        model,
+        task_list=['winogrande','piqa','hellaswag', 'arc_easy','arc_challenge'],
+        num_fewshots=1,
+        batch_size=args.zeroshot_batch_size,
+    ))
     wandb.log(
         filter_dict(
-            get_zero_shots(model, task_list=['mmlu',], num_fewshots=5),
+            get_zero_shots(model, task_list=['mmlu',], num_fewshots=5, batch_size=args.mmlu_batch_size),
             'mmlu@5'
         )
     )
