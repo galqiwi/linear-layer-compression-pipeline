@@ -519,6 +519,7 @@ def get_old_run(args):
     import os
     my_config = vars(args)
     old_runs = get_df_from_wandb(f'{os.environ["WANDB_ENTITY"]}/{os.environ["WANDB_PROJECT"]}')
+    print(old_runs[['Config', 'Commit']])
     old_runs = old_runs[old_runs['Config'] == my_config]
     old_runs = old_runs[old_runs['Commit'] == get_local_git_commit()]
     if len(old_runs) == 0:
