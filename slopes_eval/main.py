@@ -524,7 +524,6 @@ def get_old_run(args):
     old_runs = old_runs[old_runs['Commit'] == get_local_git_commit()]
     if len(old_runs) == 0:
         return None
-    print(old_runs)
     return dict(old_runs.iloc[-1])
 
 ###
@@ -578,7 +577,7 @@ def main():
     )
     args = parser.parse_args()
 
-    print(get_old_run(args))
+    old_run = get_old_run(args)
 
     wandb.init(
         # track hyperparameters and run metadata
@@ -607,18 +606,25 @@ def main():
 
     ppl_delta_by_layer_name = {}
 
+    old_ppl_delta_by_layer_name_in_progress = {}
+    if old_run is not None:
+        old_ppl_delta_by_layer_name_in_progress = old_run.get('ppl_delta_by_layer_name_in_progress', {})
+
     for layer_idx, layer_name in enumerate(layers):
         print(f'Checking {layer_name}')
-        config = get_empty_config(layers)
-        config[layer_name] = (args.edenn_d, args.edenn_n)
+        if layer_name in old_ppl_delta_by_layer_name_in_progress:
+            print(f'Skipping {layer_name}')
+            ppl_delta = old_ppl_delta_by_layer_name_in_progress[layer_name]
+        else:
+            config = get_empty_config(layers)
+            config[layer_name] = (args.edenn_d, args.edenn_n)
 
-        ppl_delta = eval_ppl_by_config(
-            args,
-            model,
-            config,
-        ) - baseline_ppl
+            ppl_delta = eval_ppl_by_config(
+                args,
+                model,
+                config,
+            ) - baseline_ppl
 
-        wandb.log({'layer_ppl_delta': ppl_delta}, layer_idx)
         wandb.log({'ppl_delta_by_layer_name_in_progress': ppl_delta_by_layer_name})
         ppl_delta_by_layer_name[layer_name] = ppl_delta
         print(f'ppl_delta: {ppl_delta}')
