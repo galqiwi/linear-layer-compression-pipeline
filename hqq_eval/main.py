@@ -380,11 +380,12 @@ def set_module_by_path(model, path, value):
     setattr(parent, parts[-1], value)
 
 
-def get_zero_shots(model, task_list = ('arc_easy',), num_fewshots=1):
+def get_zero_shots(model, task_list = ('arc_easy',), num_fewshots=1, batch_size=1):
     import lm_eval
 
     lm_eval_model = lm_eval.models.huggingface.HFLM(
         pretrained=model,
+        batch_size=batch_size,
     )
 
     tasks = lm_eval.tasks.get_task_dict(task_list)
@@ -500,6 +501,12 @@ def main():
         type=float, default=4.0, help='Target wbits.'
     )
     parser.add_argument(
+        '--zeroshot-batch-size', type=int, required=False, default=1,
+    )
+    parser.add_argument(
+        '--mmlu-batch-size', type=int, required=False, default=1,
+    )
+    parser.add_argument(
         '--block_size',
         type=int, default=1024, help='Block size for quantization.'
     )
@@ -556,10 +563,15 @@ def main():
     model.eval()
 
     # model = model.to(DEV)
-    wandb.log(get_zero_shots(model, task_list=['winogrande','piqa','hellaswag', 'arc_easy','arc_challenge'], num_fewshots=1))
+    wandb.log(get_zero_shots(
+        model,
+        task_list=['winogrande', 'piqa', 'hellaswag', 'arc_easy', 'arc_challenge'],
+        num_fewshots=1,
+        batch_size=args.zeroshot_batch_size,
+    ))
     wandb.log(
         filter_dict(
-            get_zero_shots(model, task_list=['mmlu',], num_fewshots=5),
+            get_zero_shots(model, task_list=['mmlu', ], num_fewshots=5, batch_size=args.mmlu_batch_size),
             'mmlu@5'
         )
     )
