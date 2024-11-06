@@ -365,6 +365,9 @@ def main():
         '--mmlu-batch-size', type=int, required=False, default=1,
     )
     parser.add_argument(
+        '--skip_ppl_eval', action='store_true', help='Skip PPL evaluations.'
+    )
+    parser.add_argument(
         '--slopes_wandb_name', type=str, default='galqiwi/test',
         help='WandB name for slopes.'
     )
@@ -404,13 +407,14 @@ def main():
 
     model = model.half()
 
-    datasets = ['wikitext2']
-    for dataset in datasets:
-        dataloader, testloader = get_loaders(
-            dataset, seed=args.seed, model=args.model, seqlen=model.seqlen
-        )
-        ppl = llama_eval(model, testloader, DEV)
-        wandb.log({f'ppl_{dataset}': ppl})
+    if not args.skip_ppl_eval:
+        datasets = ['wikitext2']
+        for dataset in datasets:
+            dataloader, testloader = get_loaders(
+                dataset, seed=args.seed, model=args.model, seqlen=model.seqlen
+            )
+            ppl = llama_eval(model, testloader, DEV)
+            wandb.log({f'ppl_{dataset}': ppl})
 
     if torch.cuda.device_count() > 1:
         # Inference of Llama2-70b on 3 80GB GPUs
