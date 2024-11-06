@@ -116,10 +116,10 @@ def get_grids_legacy():
     return good_grids_with_mse
 
 def get_grids():
-    # grids = literal_eval(requests.get(
-    #     'https://gist.githubusercontent.com/galqiwi/64533350e3dcf4dfa31cd33d9956efb4/raw/fbec4fe8eaf81ce0b946eae5ef2137b3a8cd0916/UPDATED_GRIDS_MSE'
-    # ).text)
-    grids = get_grids_legacy()
+    grids = literal_eval(requests.get(
+        'https://gist.githubusercontent.com/galqiwi/148abedb84bdad215956aa450fd71475/raw/c29b0ef8c3d87712c5e9ca1f6a03fd1c1f7be477/UPDATED_GRIDS_MSE_V3.1'
+    ).text)
+    # grids = get_grids_legacy()
     print(grids)
 
     grids = pd.DataFrame(grids)

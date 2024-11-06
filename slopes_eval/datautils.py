@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+import functools
 
 
 def set_seed(seed):
@@ -71,7 +72,8 @@ def get_red(nsamples, seed, seqlen, model):
     return trainloader, testloader
 
 
-def get_loaders(
+@functools.cache
+def do_get_loaders(
     name, nsamples=256, seed=0, seqlen=2048, model=''
 ):
     if 'wikitext2' in name:
@@ -80,4 +82,17 @@ def get_loaders(
         return get_random(nsamples, seed, seqlen, model)
     if 'red' in name:
         return get_red(nsamples, seed, seqlen, model)
+
+
+def get_loaders(
+    name, nsamples=256, seed=0, seqlen=2048, model=''
+):
+    import copy
+    train, test = do_get_loaders(name, nsamples, seed, seqlen, model)
+    if train is not None:
+        train = copy.deepcopy(train)
+    if test is not None:
+        test = copy.deepcopy(test)
+    return train, test
+
 
