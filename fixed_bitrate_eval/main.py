@@ -440,18 +440,20 @@ def main():
     else:
         model = model.to(DEV)
 
-    wandb.log(get_zero_shots(
-        model,
-        task_list=['winogrande','piqa','hellaswag', 'arc_easy','arc_challenge'],
-        num_fewshots=1,
-        batch_size=args.zeroshot_batch_size,
-    ))
+    torch.set_grad_enabled(False)
+
     wandb.log(
         filter_dict(
             get_zero_shots(model, task_list=['mmlu',], num_fewshots=5, batch_size=args.mmlu_batch_size),
             'mmlu@5'
         )
     )
+    wandb.log(get_zero_shots(
+        model,
+        task_list=['winogrande','piqa','hellaswag', 'arc_easy','arc_challenge'],
+        num_fewshots=1,
+        batch_size=args.zeroshot_batch_size,
+    ))
 
 
 if __name__ == '__main__':
