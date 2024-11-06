@@ -523,6 +523,7 @@ def get_old_run(args):
     old_runs = old_runs[old_runs['Commit'] == get_local_git_commit()]
     if len(old_runs) == 0:
         return None
+    print(old_runs)
     return dict(old_runs.sort_values('_timestamp').iloc[-1])
 
 ###
