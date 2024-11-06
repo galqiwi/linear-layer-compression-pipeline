@@ -520,7 +520,7 @@ def get_old_run(args):
     my_config = vars(args)
     old_runs = get_df_from_wandb(f'{os.environ["WANDB_ENTITY"]}/{os.environ["WANDB_PROJECT"]}')
     old_runs = old_runs[old_runs['Config'] == my_config]
-    # old_runs = old_runs[old_runs['Commit'] == get_local_git_commit()]
+    old_runs = old_runs[old_runs['Commit'] == get_local_git_commit()]
     if len(old_runs) == 0:
         return None
     return dict(old_runs.tail(1).iloc[-1])
@@ -616,6 +616,8 @@ def main():
     old_ppl_delta_by_layer_name_in_progress = {}
     if old_run is not None:
         old_ppl_delta_by_layer_name_in_progress = old_run.get('ppl_delta_by_layer_name_in_progress', {})
+
+    print(old_ppl_delta_by_layer_name_in_progress)
 
     if not isinstance(old_ppl_delta_by_layer_name_in_progress, dict):
         old_ppl_delta_by_layer_name_in_progress = {}
