@@ -418,7 +418,7 @@ def main():
 
         n_devices = torch.cuda.device_count()
 
-        device_map = accelerate.infer_auto_device_map(model, max_memory={device_idx: "30Gb" for device_idx in
+        device_map = accelerate.infer_auto_device_map(model, max_memory={device_idx: "30GB" for device_idx in
                                                                          range(n_devices)},
                                                       no_split_module_classes=['LlamaDecoderLayer'])
 
