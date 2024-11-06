@@ -367,6 +367,9 @@ def main():
         '--mmlu-batch-size', type=int, required=False, default=1,
     )
     parser.add_argument(
+        '--skip_ppl_eval', action='store_true', help='Skip PPL evaluations.'
+    )
+    parser.add_argument(
         '--skip-zeroshots', action='store_true', help='Skip zero-shot evaluations.'
     )
 
@@ -409,13 +412,14 @@ def main():
 
     model = model.half()
 
-    datasets = ['wikitext2']
-    for dataset in datasets:
-        dataloader, testloader = get_loaders(
-            dataset, seed=args.seed, model=args.model, seqlen=model.seqlen
-        )
-        ppl = llama_eval(model, testloader, DEV)
-        wandb.log({f'ppl_{dataset}': ppl})
+    if not args.skip_ppl_eval:
+        datasets = ['wikitext2']
+        for dataset in datasets:
+            dataloader, testloader = get_loaders(
+                dataset, seed=args.seed, model=args.model, seqlen=model.seqlen
+            )
+            ppl = llama_eval(model, testloader, DEV)
+            wandb.log({f'ppl_{dataset}': ppl})
 
     if args.skip_zeroshots:
         return
