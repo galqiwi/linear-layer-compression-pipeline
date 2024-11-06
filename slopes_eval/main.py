@@ -577,12 +577,12 @@ def main():
     )
     args = parser.parse_args()
 
+    print(get_old_run(args))
+
     wandb.init(
         # track hyperparameters and run metadata
         config=args,
     )
-
-    print(get_old_run(args))
 
     model = AutoModelForCausalLM.from_pretrained(args.model, torch_dtype=torch.float16, low_cpu_mem_usage=True, device_map="cpu")
     model.seqlen = args.seqlen
