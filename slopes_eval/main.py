@@ -519,7 +519,6 @@ def get_old_run(args):
     import os
     my_config = vars(args)
     old_runs = get_df_from_wandb(f'{os.environ["WANDB_ENTITY"]}/{os.environ["WANDB_PROJECT"]}')
-    print(old_runs[['Config', 'Commit']])
     old_runs = old_runs[old_runs['Config'] == my_config]
     old_runs = old_runs[old_runs['Commit'] == get_local_git_commit()]
     if len(old_runs) == 0:
@@ -599,7 +598,13 @@ def main():
         if 'lm_head' not in layer
     ])
 
-    baseline_ppl = eval_ppl_by_config(args, model, get_empty_config(layers))
+    baseline_ppl = None
+
+    if old_run is not None:
+        baseline_ppl = old_run.get('baseline_ppl', None)
+
+    if baseline_ppl is None:
+        baseline_ppl = eval_ppl_by_config(args, model, get_empty_config(layers))
 
     wandb.log({'baseline_ppl': baseline_ppl})
     print(f'baseline_ppl: {baseline_ppl}')
