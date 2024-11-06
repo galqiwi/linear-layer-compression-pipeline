@@ -467,6 +467,67 @@ def get_empty_config(layers):
     return {layer: (-1, -1) for layer in layers}
 
 
+###
+
+def get_git_root(path):
+    import os
+    if os.path.dirname(path) == path:
+        assert False, '.git not found'
+    if os.path.isdir(os.path.join(path, '.git')):
+        return path
+    return get_git_root(os.path.dirname(path))
+
+def get_git_commit(path):
+    import git
+    git_root = get_git_root(path)
+    return git.Repo(git_root).head.commit.hexsha
+
+
+def get_local_git_commit():
+    import os
+    return get_git_commit(os.getcwd())
+
+
+import functools
+
+
+@functools.cache
+def get_df_from_wandb(path):
+    import tqdm
+    import wandb
+    import pandas as pd
+
+    api = wandb.Api()
+
+    # Project is specified by <entity/project-name>
+    runs = api.runs(path)
+
+    data_df_lines = []
+    for run in tqdm.tqdm(runs):
+        data_df_lines.append({
+            'Name': run.name,
+            'Commit': run.commit,
+            **run.summary._json_dict,
+            **{k: v for k, v in run.config.items() if not k.startswith('_')},
+            'Config': run.config,
+        })
+    data_df = pd.DataFrame(data_df_lines)
+    return data_df
+
+
+def get_old_run(args):
+    import os
+    my_config = dict(args)
+    old_runs = get_df_from_wandb(f'{os.environ["WANDB_ENTITY"]}/{os.environ["WANDB_PROJECT"]}')
+    old_runs = old_runs[old_runs['Config'] == my_config]
+    old_runs = old_runs[old_runs['Commit'] == get_local_git_commit()]
+    if len(old_runs) == 0:
+        return None
+    return dict(old_runs.sort_values('_timestamp').iloc[-1])
+
+###
+
+
 def main():
     parser = argparse.ArgumentParser()
 
@@ -519,6 +580,8 @@ def main():
         # track hyperparameters and run metadata
         config=args,
     )
+
+    print(get_old_run(args))
 
     model = AutoModelForCausalLM.from_pretrained(args.model, torch_dtype=torch.float16, low_cpu_mem_usage=True, device_map="cpu")
     model.seqlen = args.seqlen
