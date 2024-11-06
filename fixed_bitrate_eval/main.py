@@ -271,7 +271,7 @@ def llama_eval(model, dataloader, dev):
     return ppl.item()
 
 
-def get_zero_shots(model, task_list = ('arc_easy',), num_fewshots=1, batch_size=4):
+def get_zero_shots(model, task_list = ('arc_easy',), num_fewshots=1, batch_size=1):
     import lm_eval
 
     lm_eval_model = lm_eval.models.huggingface.HFLM(
