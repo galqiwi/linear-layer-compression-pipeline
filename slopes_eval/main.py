@@ -523,7 +523,7 @@ def get_old_run(args):
     old_runs = old_runs[old_runs['Commit'] == get_local_git_commit()]
     if len(old_runs) == 0:
         return None
-    return dict(old_runs.iloc[-1])
+    return dict(old_runs.tail(1).iloc[-1])
 
 ###
 
