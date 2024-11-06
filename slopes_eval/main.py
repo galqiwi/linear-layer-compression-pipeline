@@ -554,6 +554,7 @@ def main():
         ) - baseline_ppl
 
         wandb.log({'layer_ppl_delta': ppl_delta}, layer_idx)
+        wandb.log({'ppl_delta_by_layer_name_in_progress': ppl_delta_by_layer_name})
         ppl_delta_by_layer_name[layer_name] = ppl_delta
         print(f'ppl_delta: {ppl_delta}')
 
