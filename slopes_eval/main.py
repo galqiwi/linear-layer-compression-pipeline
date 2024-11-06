@@ -601,12 +601,13 @@ def main():
     baseline_ppl = None
 
     if old_run is not None:
+        print('Skipping baseline')
         baseline_ppl = old_run.get('baseline_ppl', None)
 
     if baseline_ppl is None:
         baseline_ppl = eval_ppl_by_config(args, model, get_empty_config(layers))
 
-    wandb.log({'baseline_ppl': baseline_ppl})
+    wandb.log({'baseline_ppl': baseline_ppl}, commit=True)
     print(f'baseline_ppl: {baseline_ppl}')
 
     ppl_delta_by_layer_name = {}
@@ -630,11 +631,11 @@ def main():
                 config,
             ) - baseline_ppl
 
-        wandb.log({'ppl_delta_by_layer_name_in_progress': ppl_delta_by_layer_name})
+        wandb.log({'ppl_delta_by_layer_name_in_progress': ppl_delta_by_layer_name}, commit=True)
         ppl_delta_by_layer_name[layer_name] = ppl_delta
         print(f'ppl_delta: {ppl_delta}')
 
-    wandb.log({'ppl_delta_by_layer_name': ppl_delta_by_layer_name})
+    wandb.log({'ppl_delta_by_layer_name': ppl_delta_by_layer_name}, commit=True)
     print(f'ppl_delta_by_layer_name: {ppl_delta_by_layer_name}')
     
     # model = model.to(DEV)
