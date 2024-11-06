@@ -605,7 +605,7 @@ def main():
         baseline_ppl = old_run.get('baseline_ppl', None)
 
     import math
-    if not isinstance(baseline_ppl, float) or math.isnan(baseline_ppl):
+    if not isinstance(baseline_ppl, float) or not math.isfinite(baseline_ppl):
         baseline_ppl = eval_ppl_by_config(args, model, get_empty_config(layers))
 
     wandb.log({'baseline_ppl': baseline_ppl}, commit=True)
