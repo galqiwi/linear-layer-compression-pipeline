@@ -96,6 +96,8 @@ def llama_rtn(model, layerwise_edenn_config, hadamard_groupsize, device):
 
         quantized_layer, entropy = quantize_linear_layer(layer.to(device), hadamard_groupsize, edenn_d, edenn_n)
         replace_submodule(model, layer_name, quantized_layer.cpu())
+        layer.to('meta')
+        torch.cuda.empty_cache()
         
     return model
 
