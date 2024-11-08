@@ -436,12 +436,6 @@ def main():
     model = dispatch_model_parallel(model, verbose=True)
 
 
-    wandb.log(get_zero_shots(
-        model,
-        task_list=['winogrande','piqa','hellaswag', 'arc_easy','arc_challenge'],
-        num_fewshots=1,
-        batch_size=args.zeroshot_batch_size,
-    ))
     wandb.log(
         filter_dict(
             get_zero_shots(model, task_list=['mmlu', ], num_fewshots=5,
@@ -449,6 +443,12 @@ def main():
             'mmlu@5'
         )
     )
+    wandb.log(get_zero_shots(
+        model,
+        task_list=['winogrande','piqa','hellaswag', 'arc_easy','arc_challenge'],
+        num_fewshots=1,
+        batch_size=args.zeroshot_batch_size,
+    ))
 
 
 if __name__ == '__main__':
