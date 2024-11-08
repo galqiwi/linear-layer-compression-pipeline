@@ -109,6 +109,8 @@ def dispatch_model_parallel(model, devices=None, verbose=True):
     if len(devices) == 1:
         return model.to(devices[0])
 
+    model.config.tie_word_embeddings = False
+
     import tqdm
 
     type_by_nuclear_module_name = {

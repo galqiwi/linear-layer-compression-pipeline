@@ -432,6 +432,7 @@ def main():
     from parallel import dispatch_model_parallel
 
     model = model.cpu()
+    print(model)
     torch.cuda.empty_cache()
     model = dispatch_model_parallel(model, verbose=True)
 
