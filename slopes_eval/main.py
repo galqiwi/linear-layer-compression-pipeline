@@ -432,7 +432,7 @@ def eval_ppl_by_config(args, model, layerwise_edenn_config):
     # if args.div_loss:
     #     orig_model = orig_model.half()
 
-    datasets = ['random'] if args.div_loss else ['wikitext2']
+    datasets = ['random'] if args.div_loss else ['wikitext2_trimmed']
     for dataset in datasets:
         dataloader, testloader = get_loaders(
             dataset, seed=args.seed, model=args.model, seqlen=model.seqlen
@@ -440,8 +440,6 @@ def eval_ppl_by_config(args, model, layerwise_edenn_config):
         if args.div_loss:
             ppl = llama_eval_cross_entropy(orig_model, model, testloader, DEV)
         else:
-            dataloader = dataloader[:len(testloader)]
-            dataloader = [value[0] for value in dataloader]
             ppl = llama_eval(model, dataloader, DEV)
 
         model.to('meta')

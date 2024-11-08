@@ -78,6 +78,11 @@ def do_get_loaders(
 ):
     if 'wikitext2' in name:
         return get_wikitext2(nsamples, seed, seqlen, model)
+    if 'wikitext2_trimmed' in name:
+        dataloader, testloader = get_wikitext2(nsamples, seed, seqlen, model)
+        dataloader = dataloader[:len(testloader)]
+        dataloader = [value[0] for value in dataloader]
+        return dataloader, testloader
     if 'random' in name:
         return get_random(nsamples, seed, seqlen, model)
     if 'red' in name:
