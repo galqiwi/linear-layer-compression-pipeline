@@ -431,6 +431,7 @@ def main():
 
     from parallel import dispatch_model_parallel
 
+    model = model.cpu()
     model = dispatch_model_parallel(model, verbose=True)
 
 
