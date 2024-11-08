@@ -273,10 +273,12 @@ def llama_eval(model, dataloader, dev):
 
 def get_zero_shots(model, task_list = ('arc_easy',), num_fewshots=1, batch_size=1):
     import lm_eval
+    from transformers import AutoTokenizer
 
     lm_eval_model = lm_eval.models.huggingface.HFLM(
         pretrained=model,
         batch_size=batch_size,
+        tokenizer=AutoTokenizer.from_pretrained(model.config._name_or_path, use_fast=False),
     )
 
     tasks = lm_eval.tasks.get_task_dict(task_list)
@@ -319,6 +321,8 @@ def get_empty_config(layers):
 
 
 def main():
+    torch.set_grad_enabled(False)
+
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
@@ -411,6 +415,7 @@ def main():
             raise Exception("AAA")
 
     model = model.half()
+    model.cpu()
 
     if not args.skip_ppl_eval:
         datasets = ['wikitext2']
@@ -424,27 +429,15 @@ def main():
     if args.skip_zeroshots:
         return
 
-    if torch.cuda.device_count() > 1:
-        # Inference of Llama2-70b on 3 80GB GPUs
-        import accelerate
+    from parallel import dispatch_model_parallel
 
-        n_devices = torch.cuda.device_count()
+    model = dispatch_model_parallel(model, verbose=True)
 
-        device_map = accelerate.infer_auto_device_map(model, max_memory={device_idx: "40GB" for device_idx in range(n_devices)}, no_split_module_classes=['LlamaDecoderLayer'])
-
-        print(device_map)
-
-        assert 'disk' not in set(device_map.values())
-
-        model = accelerate.dispatch_model(model, device_map=device_map)
-    else:
-        model = model.to(DEV)
-
-    torch.set_grad_enabled(False)
 
     wandb.log(
         filter_dict(
-            get_zero_shots(model, task_list=['mmlu',], num_fewshots=5, batch_size=args.mmlu_batch_size),
+            get_zero_shots(model, task_list=['mmlu_elementary_mathematics', ], num_fewshots=5,
+                           batch_size=args.mmlu_batch_size),
             'mmlu@5'
         )
     )
