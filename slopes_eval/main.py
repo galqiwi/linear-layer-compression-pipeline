@@ -267,8 +267,7 @@ def get_model_hidden_states(model, dataloader, dev):
             inps[j] = layer(inps[j], attention_mask=attention_masks[j], position_ids=position_ids[j])[0]
         layers[i] = layer.cpu()
         del layer
-
-    torch.cuda.empty_cache()
+        torch.cuda.empty_cache()
 
     hidden_states = inps
 
