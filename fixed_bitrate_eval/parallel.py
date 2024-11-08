@@ -104,6 +104,8 @@ def dispatch_model_parallel(model, devices=None, verbose=True):
             for device_idx in range(torch.cuda.device_count())
         ]
 
+    print(devices)
+
     if len(devices) == 1:
         return model.to(devices[0])
 
