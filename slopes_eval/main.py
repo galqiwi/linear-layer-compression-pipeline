@@ -205,8 +205,8 @@ def shallow_module_copy(model):
         assert 'lm_head.weight' not in model_state_dict.keys()
         model_state_dict['lm_head.weight'] = model_state_dict['model.embed_tokens.weight']
     for param_name, param in model_state_dict.items():
-        replace_submodule(new_model, param_name, param)
-        replace_submodule(model, param_name, param)
+        replace_submodule(new_model, param_name, nn.Parameter(data=param.data, requires_grad=False))
+        replace_submodule(model, param_name, nn.Parameter(data=param.data, requires_grad=False))
     for name, buffer in model_state_dict_buffers.items():
         parent_name = '.'.join(name.split('.')[:-1])
         buffer_name = name.split('.')[-1]
