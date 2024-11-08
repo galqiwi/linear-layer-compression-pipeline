@@ -444,7 +444,7 @@ def main():
     ))
     wandb.log(
         filter_dict(
-            get_zero_shots(model, task_list=['mmlu_elementary_mathematics', ], num_fewshots=5,
+            get_zero_shots(model, task_list=['mmlu', ], num_fewshots=5,
                            batch_size=args.mmlu_batch_size),
             'mmlu@5'
         )
