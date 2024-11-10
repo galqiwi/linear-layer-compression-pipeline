@@ -593,6 +593,8 @@ def main():
         def monkeypatch_torch_init():
             import torch
             import torch.nn as nn
+            import transformers
+            transformers.modeling_utils._init_weights = False
             TORCH_INIT_FUNCTIONS = {
                 "uniform_": nn.init.uniform_,
                 "normal_": nn.init.normal_,
@@ -615,6 +617,7 @@ def main():
 
                 setattr(torch.nn.init, name, init_zeros)
         import transformers
+
         def get_random_init_model(model_name):
             monkeypatch_torch_init()
             config = transformers.AutoConfig.from_pretrained(model_name)
