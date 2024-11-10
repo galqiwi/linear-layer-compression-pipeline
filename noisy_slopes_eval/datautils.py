@@ -76,18 +76,12 @@ def get_red(nsamples, seed, seqlen, model):
 def do_get_loaders(
     name, nsamples=256, seed=0, seqlen=2048, model=''
 ):
-    if 'wikitext2_trimmed' == name:
-        dataloader, testloader = get_wikitext2(nsamples, seed, seqlen, model)
-        dataloader = dataloader[:len(testloader)]
-        dataloader = [value[0] for value in dataloader]
-        return dataloader, testloader
-    if 'wikitext2' == name:
+    if 'wikitext2' in name:
         return get_wikitext2(nsamples, seed, seqlen, model)
-    if 'random' == name:
+    if 'random' in name:
         return get_random(nsamples, seed, seqlen, model)
-    if 'red' == name:
+    if 'red' in name:
         return get_red(nsamples, seed, seqlen, model)
-    assert False
 
 
 def get_loaders(

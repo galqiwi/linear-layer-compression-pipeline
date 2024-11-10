@@ -271,12 +271,14 @@ def llama_eval(model, dataloader, dev):
     return ppl.item()
 
 
-def get_zero_shots(model, task_list = ('arc_easy',), num_fewshots=1, batch_size=4):
+def get_zero_shots(model, task_list = ('arc_easy',), num_fewshots=1, batch_size=1):
     import lm_eval
+    from transformers import AutoTokenizer
 
     lm_eval_model = lm_eval.models.huggingface.HFLM(
         pretrained=model,
         batch_size=batch_size,
+        tokenizer=AutoTokenizer.from_pretrained(model.config._name_or_path, use_fast=False),
     )
 
     tasks = lm_eval.tasks.get_task_dict(task_list)
@@ -319,6 +321,8 @@ def get_empty_config(layers):
 
 
 def main():
+    torch.set_grad_enabled(False)
+
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
@@ -359,6 +363,15 @@ def main():
     parser.add_argument(
         '--edenn-n', type=int, required=True,
         help='EDENN grid size'
+    )
+    parser.add_argument(
+        '--zeroshot-batch-size', type=int, required=False, default=1,
+    )
+    parser.add_argument(
+        '--mmlu-batch-size', type=int, required=False, default=1,
+    )
+    parser.add_argument(
+        '--skip_ppl_eval', action='store_true', help='Skip PPL evaluations.'
     )
     parser.add_argument(
         '--skip-zeroshots', action='store_true', help='Skip zero-shot evaluations.'
@@ -402,41 +415,41 @@ def main():
             raise Exception("AAA")
 
     model = model.half()
+    model.cpu()
 
-    datasets = ['wikitext2']
-    for dataset in datasets:
-        dataloader, testloader = get_loaders(
-            dataset, seed=args.seed, model=args.model, seqlen=model.seqlen
-        )
-        ppl = llama_eval(model, testloader, DEV)
-        wandb.log({f'ppl_{dataset}': ppl})
+    if not args.skip_ppl_eval:
+        datasets = ['wikitext2']
+        for dataset in datasets:
+            dataloader, testloader = get_loaders(
+                dataset, seed=args.seed, model=args.model, seqlen=model.seqlen
+            )
+            ppl = llama_eval(model, testloader, DEV)
+            wandb.log({f'ppl_{dataset}': ppl})
 
     if args.skip_zeroshots:
         return
 
-    if torch.cuda.device_count() > 1:
-        # Inference of Llama2-70b on 3 80GB GPUs
-        import accelerate
+    from parallel import dispatch_model_parallel
 
-        n_devices = torch.cuda.device_count()
+    model = model.cpu()
+    print(model)
+    torch.cuda.empty_cache()
+    model = dispatch_model_parallel(model, verbose=True)
 
-        device_map = accelerate.infer_auto_device_map(model, max_memory={device_idx: "55GB" for device_idx in range(n_devices)}, no_split_module_classes=['LlamaDecoderLayer'])
 
-        print(device_map)
-
-        assert 'disk' not in set(device_map.values())
-
-        model = accelerate.dispatch_model(model, device_map=device_map)
-    else:
-        model = model.to(DEV)
-
-    wandb.log(get_zero_shots(model, task_list=['winogrande','piqa','hellaswag', 'arc_easy','arc_challenge'], num_fewshots=1))
     wandb.log(
         filter_dict(
-            get_zero_shots(model, task_list=['mmlu',], num_fewshots=5),
+            get_zero_shots(model, task_list=['mmlu', ], num_fewshots=5,
+                           batch_size=args.mmlu_batch_size),
             'mmlu@5'
         )
     )
+    wandb.log(get_zero_shots(
+        model,
+        task_list=['winogrande','piqa','hellaswag', 'arc_easy','arc_challenge'],
+        num_fewshots=1,
+        batch_size=args.zeroshot_batch_size,
+    ))
 
 
 if __name__ == '__main__':

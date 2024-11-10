@@ -96,6 +96,8 @@ def llama_rtn(model, layerwise_edenn_config, hadamard_groupsize, device):
 
         quantized_layer, entropy = quantize_linear_layer(layer.to(device), hadamard_groupsize, edenn_d, edenn_n)
         replace_submodule(model, layer_name, quantized_layer.cpu())
+        layer.to('meta')
+        torch.cuda.empty_cache()
         
     return model
 
@@ -267,11 +269,12 @@ def llama_eval(model, dataloader, dev):
     return ppl.item()
 
 
-def get_zero_shots(model, task_list = ('arc_easy',), num_fewshots=1):
+def get_zero_shots(model, task_list = ('arc_easy',), num_fewshots=1, batch_size=1):
     import lm_eval
 
     lm_eval_model = lm_eval.models.huggingface.HFLM(
         pretrained=model,
+        batch_size=batch_size,
     )
 
     tasks = lm_eval.tasks.get_task_dict(task_list)
@@ -356,6 +359,15 @@ def main():
         help='Target bits value.'
     )
     parser.add_argument(
+        '--zeroshot-batch-size', type=int, required=False, default=1,
+    )
+    parser.add_argument(
+        '--mmlu-batch-size', type=int, required=False, default=1,
+    )
+    parser.add_argument(
+        '--skip_ppl_eval', action='store_true', help='Skip PPL evaluations.'
+    )
+    parser.add_argument(
         '--slopes_wandb_name', type=str, default='galqiwi/test',
         help='WandB name for slopes.'
     )
@@ -395,13 +407,14 @@ def main():
 
     model = model.half()
 
-    datasets = ['wikitext2']
-    for dataset in datasets:
-        dataloader, testloader = get_loaders(
-            dataset, seed=args.seed, model=args.model, seqlen=model.seqlen
-        )
-        ppl = llama_eval(model, testloader, DEV)
-        wandb.log({f'ppl_{dataset}': ppl})
+    if not args.skip_ppl_eval:
+        datasets = ['wikitext2']
+        for dataset in datasets:
+            dataloader, testloader = get_loaders(
+                dataset, seed=args.seed, model=args.model, seqlen=model.seqlen
+            )
+            ppl = llama_eval(model, testloader, DEV)
+            wandb.log({f'ppl_{dataset}': ppl})
 
     if torch.cuda.device_count() > 1:
         # Inference of Llama2-70b on 3 80GB GPUs
@@ -409,7 +422,7 @@ def main():
 
         n_devices = torch.cuda.device_count()
 
-        device_map = accelerate.infer_auto_device_map(model, max_memory={device_idx: "55GB" for device_idx in
+        device_map = accelerate.infer_auto_device_map(model, max_memory={device_idx: "40GB" for device_idx in
                                                                          range(n_devices)},
                                                       no_split_module_classes=['LlamaDecoderLayer'])
 
@@ -421,10 +434,15 @@ def main():
     else:
         model = model.to(DEV)
 
-    wandb.log(get_zero_shots(model, task_list=['winogrande','piqa','hellaswag', 'arc_easy','arc_challenge'], num_fewshots=1))
+    wandb.log(get_zero_shots(
+        model,
+        task_list=['winogrande','piqa','hellaswag', 'arc_easy','arc_challenge'],
+        num_fewshots=1,
+        batch_size=args.zeroshot_batch_size,
+    ))
     wandb.log(
         filter_dict(
-            get_zero_shots(model, task_list=['mmlu',], num_fewshots=5),
+            get_zero_shots(model, task_list=['mmlu',], num_fewshots=5, batch_size=args.mmlu_batch_size),
             'mmlu@5'
         )
     )

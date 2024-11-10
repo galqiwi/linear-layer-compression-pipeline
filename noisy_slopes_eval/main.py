@@ -18,7 +18,6 @@ from gptq import apply_gptq, get_accumulate_input_fn
 
 DEV = torch.device('cuda')
 
-
 def find_layers(module, layers=[nn.Linear], name=''):
     if type(module) in layers:
         return {name: module}
@@ -28,13 +27,6 @@ def find_layers(module, layers=[nn.Linear], name=''):
             child, layers=layers, name=name + '.' + name1 if name != '' else name1
         ))
     return res
-
-
-def get_submodule(module, submodule_path):
-    submodule_names = submodule_path.split(".")
-    for submodule in submodule_names:
-        module = getattr(module, submodule)
-    return module
 
 
 def replace_submodule(module, submodule_path, new_submodule):
@@ -49,28 +41,28 @@ def quantize_linear_layer(layer: nn.Linear, hadamard_groupsize: int, edenn_d: in
     weight = layer.weight.float()
     # Pad to Hadamard transform size
     weight = pad_to_block(weight, [1], hadamard_groupsize)
-
+    
     # Scale and Hadamard transform
     mult = weight.shape[1] // hadamard_groupsize
     weight = weight.reshape(-1, mult, hadamard_groupsize)
     scales = torch.linalg.norm(weight, axis=-1)
     weight = hadamard_transform(weight) / scales[:, :, None]
-
+    
     # Pad to edenn_d and project
     weight = pad_to_block(weight, [2], edenn_d).reshape(weight.shape[0], mult, -1, edenn_d)
 
     for i in range(0, weight.shape[0], 64):
-        weight[i:i + 64], entorpy = higgs_quantize_dequantize(weight[i:i + 64], edenn_d, edenn_n)
+        weight[i:i+64], entorpy = higgs_quantize_dequantize(weight[i:i+64], edenn_d, edenn_n)
     weight = weight.reshape(weight.shape[0], mult, -1)
-
+    
     # Cut the padded values
-    weight = weight[..., :hadamard_groupsize]
-
+    weight = weight[...,:hadamard_groupsize]
+    
     # Unscale
     weight = (weight * scales[:, :, None]).reshape(weight.shape[0], -1)
-
+    
     return HadLinear(weight.half(), hadamard_groupsize), entorpy
-
+    
 
 @torch.no_grad()
 def llama_rtn(model, layerwise_edenn_config, hadamard_groupsize, device):
@@ -86,14 +78,17 @@ def llama_rtn(model, layerwise_edenn_config, hadamard_groupsize, device):
 
     for layer_name in tqdm(layer_names, desc="Quantizing linear layers..."):
         layer = linear_layers[layer_name]
-        edenn_d, edenn_n = layerwise_edenn_config[layer_name]
+        mse = layerwise_edenn_config[layer_name]
 
-        if (edenn_d, edenn_n) == (-1, -1):
+        if mse == 0.0:
             continue
 
-        quantized_layer, entropy = quantize_linear_layer(layer.to(device), hadamard_groupsize, edenn_d, edenn_n)
-        replace_submodule(model, layer_name, quantized_layer.cpu().half())
+        weight = layer.weight.data
 
+        weight = weight + torch.randn_like(weight) * torch.norm(weight) * (mse ** 0.5) / (weight.numel() ** 0.5)
+
+        layer.weight.data = weight
+        
     return model
 
 
@@ -119,14 +114,12 @@ def llama_gptq(model, nsamples, dataloader, dev, layerwise_edenn_config, hadamar
         def __init__(self, module):
             super().__init__()
             self.module = module
-
         def forward(self, inp, **kwargs):
             inps.append(inp)
             outs.append(torch.zeros_like(inp))
             attention_masks.append(kwargs['attention_mask'])
             position_ids.append(kwargs['position_ids'])
             raise ValueError
-
     layers[0] = Catcher(layers[0])
     for batch in dataloader:
         try:
@@ -169,7 +162,7 @@ def llama_gptq(model, nsamples, dataloader, dev, layerwise_edenn_config, hadamar
                 edenn_d=edenn_d, edenn_n=edenn_n,
                 had_block_size=hadamard_groupsize,
             )
-
+                
             quantized_linear = HadLinear(quantized_layer, hadamard_groupsize)
             replace_submodule(layer, name, quantized_linear)
 
@@ -183,47 +176,22 @@ def llama_gptq(model, nsamples, dataloader, dev, layerwise_edenn_config, hadamar
 
         if any([inp.isnan().any() for inp in inps]):
             raise Exception("NaNs!")
-
+        
         layers[i] = layer.cpu()
         del layer
         torch.cuda.empty_cache()
-
+        
     assert layer_counter == 7 * 32
 
     model.config.use_cache = use_cache
     return model
-
-
-def shallow_module_copy(model):
-    import copy
-    shared_embeddings = model.model.embed_tokens.weight is model.lm_head.weight
-    model_state_dict = dict(model.named_parameters())
-    model_state_dict_buffers = dict(model.named_buffers())
-    model.to('meta')
-    new_model = copy.deepcopy(model)
-    if shared_embeddings:
-        assert 'lm_head.weight' not in model_state_dict.keys()
-        model_state_dict['lm_head.weight'] = model_state_dict['model.embed_tokens.weight']
-    for param_name, param in model_state_dict.items():
-        replace_submodule(new_model, param_name, nn.Parameter(data=param.data, requires_grad=False))
-        replace_submodule(model, param_name, nn.Parameter(data=param.data, requires_grad=False))
-    for name, buffer in model_state_dict_buffers.items():
-        parent_name = '.'.join(name.split('.')[:-1])
-        buffer_name = name.split('.')[-1]
-        get_submodule(model, parent_name).register_buffer(buffer_name, buffer)
-        get_submodule(new_model, parent_name).register_buffer(buffer_name, buffer)
-
-    for param in model.parameters():
-        assert param.device != torch.device('meta')
-    for param in model.buffers():
-        assert param.device != torch.device('meta')
-
-    return new_model
-
+        
 
 @torch.no_grad()
-def get_model_hidden_states(model, dataloader, dev):
-    nsamples = len(dataloader)
+def llama_eval(model, dataloader, dev):
+    print('Evaluating ...')
+
+    nsamples = len(dataloader) 
 
     use_cache = model.config.use_cache
     model.config.use_cache = False
@@ -234,6 +202,81 @@ def get_model_hidden_states(model, dataloader, dev):
     layers[0] = layers[0].to(dev)
 
     dtype = next(iter(model.parameters())).dtype
+    inps = []
+    attention_masks = []
+    position_ids = []
+
+    class Catcher(nn.Module):
+        def __init__(self, module):
+            super().__init__()
+            self.module = module
+        def forward(self, inp, **kwargs):
+            inps.append(inp)
+            attention_masks.append(kwargs['attention_mask'])
+            position_ids.append(kwargs['position_ids'])
+            raise ValueError
+    layers[0] = Catcher(layers[0])
+    for batch in dataloader:
+        try:
+            model(batch.to(dev))
+        except ValueError:
+            pass
+    layers[0] = layers[0].module
+
+    layers[0] = layers[0].cpu()
+    model.model.embed_tokens = model.model.embed_tokens.cpu()
+    torch.cuda.empty_cache()
+
+    for i in trange(len(layers), desc=f"Evaluating layer-by-layer..."):
+        layer = layers[i].to(dev)
+        for j in range(nsamples):
+            inps[j] = layer(inps[j], attention_mask=attention_masks[j], position_ids=position_ids[j])[0]
+        layers[i] = layer.cpu()
+        del layer
+        torch.cuda.empty_cache()
+
+    if model.model.norm is not None:
+        model.model.norm = model.model.norm.to(dev)
+    model.lm_head = model.lm_head.to(dev)
+
+    nlls = []
+    for i in range(nsamples):
+        hidden_states = inps[i]
+        if model.model.norm is not None:
+            hidden_states = model.model.norm(hidden_states)
+        lm_logits = model.lm_head(hidden_states)
+        shift_logits = lm_logits[:, :-1, :].contiguous()
+        shift_labels = (dataloader[i].to(dev))[:, 1:]
+        loss_fct = nn.CrossEntropyLoss()
+        loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
+        neg_log_likelihood = loss.float() * model.seqlen
+        nlls.append(neg_log_likelihood)
+    ppl = torch.exp(torch.stack(nlls).sum() / (nsamples * model.seqlen))
+    print(ppl.item())
+
+    model.config.use_cache = use_cache
+    
+    return ppl.item()
+
+
+@torch.no_grad()
+def llama_eval_cross_entropy(orig_model, model, dataloader, dev):
+    print('Evaluating ...')
+
+    nsamples = len(dataloader)
+
+    use_cache = model.config.use_cache
+    orig_use_cache = orig_model.config.use_cache
+
+    model.config.use_cache = False
+    orig_model.config.use_cache = False
+    layers = model.model.layers
+    orig_layers = orig_model.model.layers
+
+    model.model.embed_tokens = model.model.embed_tokens.to(dev)
+    model.model.rotary_emb = model.model.rotary_emb.to(dev)
+    layers[0] = layers[0].to(dev)
+
     inps = []
     attention_masks = []
     position_ids = []
@@ -258,67 +301,49 @@ def get_model_hidden_states(model, dataloader, dev):
     layers[0] = layers[0].module
 
     layers[0] = layers[0].cpu()
+
     model.model.embed_tokens = model.model.embed_tokens.cpu()
+    torch.cuda.empty_cache()
+
+    orig_model.model.embed_tokens = orig_model.model.embed_tokens.to(dev)
+    orig_model.model.rotary_emb = orig_model.model.rotary_emb.to(dev)
+    layers[0] = layers[0].to(dev)
+
+    orig_inps = []
+
+    class Catcher(nn.Module):
+        def __init__(self, module):
+            super().__init__()
+            self.module = module
+
+        def forward(self, inp, **kwargs):
+            orig_inps.append(inp)
+            raise ValueError
+
+    orig_layers[0] = Catcher(orig_layers[0])
+    for batch in dataloader:
+        try:
+            orig_model(batch.to(dev))
+        except ValueError:
+            pass
+    orig_layers[0] = orig_layers[0].module
+
+    orig_layers[0] = orig_layers[0].cpu()
+
+    orig_model.model.embed_tokens = orig_model.model.embed_tokens.cpu()
     torch.cuda.empty_cache()
 
     for i in trange(len(layers), desc=f"Evaluating layer-by-layer..."):
         layer = layers[i].to(dev)
+        orig_layer = orig_layers[i].to(dev)
         for j in range(nsamples):
             inps[j] = layer(inps[j], attention_mask=attention_masks[j], position_ids=position_ids[j])[0]
-        layers[i] = layer.to('meta')
+            orig_inps[j] = orig_layer(orig_inps[j], attention_mask=attention_masks[j], position_ids=position_ids[j])[0]
+        layers[i] = layer.cpu()
+        orig_layers[i] = orig_layer.cpu()
         del layer
-        import gc
-        gc.collect()
+        del orig_layer
         torch.cuda.empty_cache()
-
-    hidden_states = inps
-
-    model.config.use_cache = use_cache
-
-    return hidden_states
-
-
-@torch.no_grad()
-def get_ppl(model, dataloader, hidden_states):
-    dev = hidden_states[0].device
-    if model.model.norm is not None:
-        model.model.norm = model.model.norm.to(dev)
-    model.lm_head = model.lm_head.to(dev)
-
-    nsamples = len(dataloader)
-
-    nlls = []
-    for i in range(nsamples):
-        sample_hidden_states = hidden_states[i]
-        if model.model.norm is not None:
-            sample_hidden_states = model.model.norm(sample_hidden_states)
-        lm_logits = model.lm_head(sample_hidden_states)
-        shift_logits = lm_logits[:, :-1, :].contiguous()
-        shift_labels = (dataloader[i].to(dev))[:, 1:]
-        loss_fct = nn.CrossEntropyLoss()
-        loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
-        neg_log_likelihood = loss.float() * model.seqlen
-        nlls.append(neg_log_likelihood)
-    ppl = torch.exp(torch.stack(nlls).sum() / (nsamples * model.seqlen))
-    return ppl.item()
-
-
-@torch.no_grad()
-def llama_eval(model, dataloader, dev):
-    print('Evaluating ...')
-
-    hidden_states = get_model_hidden_states(model, dataloader, dev)
-    output = get_ppl(model, dataloader, hidden_states)
-
-    model.to('meta')
-
-    return output
-
-
-@torch.no_grad()
-def get_kl_div(orig_model, model, dataloader, orig_hidden_states, hidden_states):
-    nsamples = len(dataloader)
-    dev = hidden_states[0].device
 
     if model.model.norm is not None:
         model.model.norm = model.model.norm.to(dev)
@@ -329,43 +354,24 @@ def get_kl_div(orig_model, model, dataloader, orig_hidden_states, hidden_states)
 
     loss = 0
     for i in range(nsamples):
-        sample_hidden_states = hidden_states[i]
-        orig_sample_hidden_states = orig_hidden_states[i]
+        hidden_states = inps[i]
+        orig_hidden_states = orig_inps[i]
         if model.model.norm is not None:
-            sample_hidden_states = model.model.norm(sample_hidden_states)
+            hidden_states = model.model.norm(hidden_states)
         if orig_model.model.norm is not None:
-            orig_sample_hidden_states = orig_model.model.norm(orig_sample_hidden_states)
-        lm_logits = model.lm_head(sample_hidden_states)
-        orig_lm_logits = orig_model.lm_head(orig_sample_hidden_states)
+            orig_hidden_states = orig_model.model.norm(orig_hidden_states)
+        lm_logits = model.lm_head(hidden_states)
+        orig_lm_logits = orig_model.lm_head(orig_hidden_states)
 
-        loss += kl_div_from_logits(inp=lm_logits, target=orig_lm_logits).item()
+        loss += kl_div_from_logits(inp=lm_logits, target=orig_lm_logits)
+
+    model.config.use_cache = use_cache
+    orig_model.config.use_cache = orig_use_cache
 
     return loss / nsamples
 
 
-ORIG_MODEL_HIDDEN_STATES = None
-
-
-@torch.no_grad()
-def llama_eval_cross_entropy(orig_model, model, dataloader, dev):
-    global ORIG_MODEL_HIDDEN_STATES
-    print('Evaluating ...')
-
-    if ORIG_MODEL_HIDDEN_STATES is None:
-        ORIG_MODEL_HIDDEN_STATES = get_model_hidden_states(orig_model, dataloader, dev)
-    orig_hidden_states = [x.detach().clone() for x in ORIG_MODEL_HIDDEN_STATES]
-    hidden_states = get_model_hidden_states(model, dataloader, dev)
-
-    return get_kl_div(
-        orig_model=orig_model,
-        model=model,
-        dataloader=dataloader,
-        orig_hidden_states=orig_hidden_states,
-        hidden_states=hidden_states,
-    )
-
-
-def get_zero_shots(model, task_list=('arc_easy',), num_fewshots=1):
+def get_zero_shots(model, task_list = ('arc_easy',), num_fewshots=1):
     import lm_eval
 
     lm_eval_model = lm_eval.models.huggingface.HFLM(
@@ -414,28 +420,34 @@ def kl_div_from_logits(inp, target):
 
 @torch.no_grad()
 def eval_grid(edenn_d: int, edenn_n: int):
-    x = torch.empty((2 ** 16, edenn_d), device=DEV).normal_()
+    x = torch.empty((2**16, edenn_d), device=DEV).normal_()
     dequant, entropy = higgs_quantize_dequantize(x, edenn_d, edenn_n)
     mse = (x - dequant).pow(2).mean().item()
     return mse, entropy / edenn_d
 
 
 def eval_ppl_by_config(args, model, layerwise_edenn_config):
+    model = copy.deepcopy(model)
     orig_model = None
     if args.div_loss:
-        #     orig_model = copy.deepcopy(model)
-        orig_model = shallow_module_copy(model)
+        orig_model = copy.deepcopy(model)
 
-    # model = copy.deepcopy(model)
+    match args.method:
+        case "rtn":
+            model = llama_rtn(model, layerwise_edenn_config, args.hadamard_groupsize, DEV)
+        case "gptq":
+            dataloader, testloader = get_loaders(
+                args.dataset, nsamples=args.nsamples, seed=args.seed, model=args.model, seqlen=model.seqlen
+            )
+            model = llama_gptq(model, args.nsamples, dataloader, DEV, layerwise_edenn_config, args.hadamard_groupsize)
+        case _:
+            raise Exception("AAA")
 
-    model = shallow_module_copy(model)
-    model = llama_rtn(model, layerwise_edenn_config, args.hadamard_groupsize, DEV)
+    model = model.half()
+    if args.div_loss:
+        orig_model = orig_model.half()
 
-    # model = model.half()
-    # if args.div_loss:
-    #     orig_model = orig_model.half()
-
-    datasets = ['random'] if args.div_loss else ['wikitext2_trimmed']
+    datasets = ['random'] if args.div_loss else ['wikitext2']
     for dataset in datasets:
         dataloader, testloader = get_loaders(
             dataset, seed=args.seed, model=args.model, seqlen=model.seqlen
@@ -443,89 +455,19 @@ def eval_ppl_by_config(args, model, layerwise_edenn_config):
         if args.div_loss:
             ppl = llama_eval_cross_entropy(orig_model, model, testloader, DEV)
         else:
+            dataloader = dataloader[:len(testloader)]
+            dataloader = [value[0] for value in dataloader]
             ppl = llama_eval(model, dataloader, DEV)
 
         model.to('meta')
         if orig_model is not None:
-            model.to('meta')
+            orig_model.to('meta')
 
         return ppl
 
 
 def get_empty_config(layers):
-    return {layer: (-1, -1) for layer in layers}
-
-
-###
-
-def get_git_root(path):
-    import os
-    if os.path.dirname(path) == path:
-        assert False, '.git not found'
-    if os.path.isdir(os.path.join(path, '.git')):
-        return path
-    return get_git_root(os.path.dirname(path))
-
-
-def get_git_commit(path):
-    import git
-    git_root = get_git_root(path)
-    return git.Repo(git_root).head.commit.hexsha
-
-
-def get_local_git_commit():
-    import os
-    return get_git_commit(os.getcwd())
-
-
-import functools
-
-
-@functools.cache
-def get_df_from_wandb(path):
-    import tqdm
-    import wandb
-    import pandas as pd
-
-    api = wandb.Api()
-
-    # Project is specified by <entity/project-name>
-    runs = api.runs(path)
-
-    data_df_lines = []
-    for run in tqdm.tqdm(runs):
-        data_df_lines.append({
-            'Name': run.name,
-            'Commit': run.commit,
-            **run.summary._json_dict,
-            **{k: v for k, v in run.config.items() if not k.startswith('_')},
-            'Config': run.config,
-        })
-    data_df = pd.DataFrame(data_df_lines)
-    return data_df
-
-
-def get_old_run(args):
-    import os
-    if os.environ.get('WANDB_NO_LOAD', '0') == '1':
-        return None
-    my_config = vars(args)
-    old_runs = get_df_from_wandb(f'{os.environ["WANDB_ENTITY"]}/{os.environ["WANDB_PROJECT"]}')
-    old_runs = old_runs[old_runs['Config'] == my_config].copy()
-    # old_runs = old_runs[old_runs['Commit'] == get_local_git_commit()]
-    if len(old_runs) == 0:
-        return None
-
-    if 'ppl_delta_by_layer_name_in_progress' not in old_runs.columns:
-        old_runs['ppl_delta_by_layer_name_in_progress'] = None
-    old_runs['ppl_delta_by_layer_name_in_progress_len'] = old_runs['ppl_delta_by_layer_name_in_progress'].apply(
-        lambda ppl_delta_by_layer_name_in_progress: 0 if not isinstance(ppl_delta_by_layer_name_in_progress, dict)
-        else len(ppl_delta_by_layer_name_in_progress)
-    )
-    return dict(old_runs.sort_values('ppl_delta_by_layer_name_in_progress_len', ascending=False).head(1).iloc[0])
-
-
-###
+    return {layer: 0.0 for layer in layers}
 
 
 def main():
@@ -536,12 +478,8 @@ def main():
         help='LlaMa model to load; pass location of hugginface converted checkpoint.'
     )
     parser.add_argument(
-        '--edenn-d', type=int, required=True,
-        help='EDENN grid dimension'
-    )
-    parser.add_argument(
-        '--edenn-n', type=int, required=True,
-        help='EDENN grid size'
+        '--mse', type=float, required=True,
+        help='Noise relative MSE.'
     )
     parser.add_argument(
         '--tag', type=str, default="default",
@@ -571,84 +509,22 @@ def main():
         help='calculate KL divergence.'
     )
     parser.add_argument(
-        '--random_init', action='store_true',
-        help='initialize model with random weights.'
-    )
-    parser.add_argument(
         '--nsamples', type=int, default=256,
         help='Number of calibration data samples.'
     )
     args = parser.parse_args()
-
-    old_run = get_old_run(args)
 
     wandb.init(
         # track hyperparameters and run metadata
         config=args,
     )
 
-    torch.set_grad_enabled(False)
-
-    if args.random_init:
-        def monkeypatch_torch_init():
-            import torch
-            import torch.nn as nn
-            import transformers
-            transformers.modeling_utils._init_weights = False
-            TORCH_INIT_FUNCTIONS = {
-                "uniform_": nn.init.uniform_,
-                "normal_": nn.init.normal_,
-                "trunc_normal_": nn.init.trunc_normal_,
-                "constant_": nn.init.constant_,
-                "xavier_uniform_": nn.init.xavier_uniform_,
-                "xavier_normal_": nn.init.xavier_normal_,
-                "kaiming_uniform_": nn.init.kaiming_uniform_,
-                "kaiming_normal_": nn.init.kaiming_normal_,
-                "uniform": nn.init.uniform,
-                "normal": nn.init.normal,
-                "xavier_uniform": nn.init.xavier_uniform,
-                "xavier_normal": nn.init.xavier_normal,
-                "kaiming_uniform": nn.init.kaiming_uniform,
-                "kaiming_normal": nn.init.kaiming_normal,
-            }
-            for name in TORCH_INIT_FUNCTIONS.keys():
-                def init_zeros(param, *args, **kwargs):
-                    param.data = torch.zeros(param.shape, dtype=torch.float16)
-
-                setattr(torch.nn.init, name, init_zeros)
-        import transformers
-
-        def get_random_init_model(model_name):
-            monkeypatch_torch_init()
-            config = transformers.AutoConfig.from_pretrained(model_name)
-            model = transformers.AutoModelForCausalLM.from_config(config)
-
-            # import tqdm
-            # for param in tqdm.tqdm(list(model.parameters())):
-            #     param.requires_grad = False
-            #     param.data.view(-1)[0::2] = 0.1
-            #     param.data.view(-1)[1::2] = -0.1
-            #     param.data.view(-1)[0::3] = 0.1
-            #     param.data.view(-1)[0::4] = -0.1
-            return model.eval().half()
-        model = get_random_init_model(args.model)
-        import collections
-        print(collections.Counter([param.dtype for param in model.parameters()]))
-        print(collections.Counter([param.dtype for param in model.buffers()]))
-    else:
-        model = AutoModelForCausalLM.from_pretrained(
-            args.model,
-            torch_dtype=torch.float16,
-            low_cpu_mem_usage=True,
-            device_map="cpu"
-        )
-
+    model = AutoModelForCausalLM.from_pretrained(args.model, torch_dtype=torch.float16, low_cpu_mem_usage=True, device_map="cpu")
     model.seqlen = args.seqlen
     model.eval()
 
-    if (args.edenn_d, args.edenn_n) != (-1, -1):
-        mse, _entropy = eval_grid(args.edenn_d, args.edenn_n)
-        wandb.log({'test_grid_mse': mse})
+    wandb.log({'test_grid_mse': args.mse})
+
 
     layers = sorted([
         layer for
@@ -656,54 +532,31 @@ def main():
         if 'lm_head' not in layer
     ])
 
-    baseline_ppl = None
+    baseline_ppl = eval_ppl_by_config(args, model, get_empty_config(layers))
 
-    if old_run is not None:
-        print('Skipping baseline')
-        baseline_ppl = old_run.get('baseline_ppl', None)
-
-    import math
-    if not (isinstance(baseline_ppl, float) or isinstance(baseline_ppl, int)) or not math.isfinite(baseline_ppl):
-        baseline_ppl = eval_ppl_by_config(args, model, get_empty_config(layers))
-
-    wandb.log({'baseline_ppl': baseline_ppl}, commit=True)
+    wandb.log({'baseline_ppl': baseline_ppl})
     print(f'baseline_ppl: {baseline_ppl}')
 
     ppl_delta_by_layer_name = {}
 
-    old_ppl_delta_by_layer_name_in_progress = {}
-    if old_run is not None:
-        old_ppl_delta_by_layer_name_in_progress = old_run.get('ppl_delta_by_layer_name_in_progress', {})
-
-    print(old_ppl_delta_by_layer_name_in_progress)
-
-    if not isinstance(old_ppl_delta_by_layer_name_in_progress, dict):
-        old_ppl_delta_by_layer_name_in_progress = {}
-
-    print(old_ppl_delta_by_layer_name_in_progress)
-
     for layer_idx, layer_name in enumerate(layers):
         print(f'Checking {layer_name}')
-        if layer_name in old_ppl_delta_by_layer_name_in_progress:
-            print(f'Skipping {layer_name}')
-            ppl_delta = old_ppl_delta_by_layer_name_in_progress[layer_name]
-        else:
-            config = get_empty_config(layers)
-            config[layer_name] = (args.edenn_d, args.edenn_n)
+        config = get_empty_config(layers)
+        config[layer_name] = args.mse
 
-            ppl_delta = eval_ppl_by_config(
-                args,
-                model,
-                config,
-            ) - baseline_ppl
+        ppl_delta = eval_ppl_by_config(
+            args,
+            model,
+            config,
+        ) - baseline_ppl
 
-        wandb.log({'ppl_delta_by_layer_name_in_progress': ppl_delta_by_layer_name}, commit=True)
+        wandb.log({'layer_ppl_delta': ppl_delta}, layer_idx)
         ppl_delta_by_layer_name[layer_name] = ppl_delta
         print(f'ppl_delta: {ppl_delta}')
 
-    wandb.log({'ppl_delta_by_layer_name': ppl_delta_by_layer_name}, commit=True)
+    wandb.log({'ppl_delta_by_layer_name': ppl_delta_by_layer_name})
     print(f'ppl_delta_by_layer_name: {ppl_delta_by_layer_name}')
-
+    
     # model = model.to(DEV)
     # wandb.log(get_zero_shots(model, task_list = ['winogrande','piqa','hellaswag', 'arc_easy','arc_challenge'], num_fewshots=1))
     # wandb.log(get_zero_shots(model, task_list = ['mmlu',], num_fewshots=5))

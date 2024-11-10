@@ -108,11 +108,12 @@ class HadLinear(nn.Module):
             weight = weight / math.sqrt(blocksize)
         self.weight_dtype = weight.dtype
         out_dim, in_dim = weight.shape
-        self.inner = nn.Linear(in_features=in_dim, out_features=out_dim, bias=False, device='meta')
-        self.inner.weight = nn.Parameter(
+        inner_layer = nn.Linear(in_features=in_dim, out_features=out_dim, bias=False, device='meta')
+        inner_layer.weight = nn.Parameter(
             weight,
             requires_grad=False,
         )
+        self.inner = inner_layer
 
     def forward(self, input):
         if self.do_hadamard:

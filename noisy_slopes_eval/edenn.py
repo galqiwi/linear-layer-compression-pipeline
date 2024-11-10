@@ -53,13 +53,7 @@ class HadLinear(nn.Module):
         super().__init__()
         self.register_buffer('had_block_size', torch.tensor(0))
         self.had_block_size = torch.tensor(had_block_size)
-        weight = weight/math.sqrt(had_block_size)
-        out_dim, in_dim = weight.shape
-        self.inner = nn.Linear(in_features=in_dim, out_features=out_dim, bias=False, device='meta')
-        self.inner.weight = nn.Parameter(
-            weight,
-            requires_grad=False,
-        )
+        self.weight = nn.Parameter(weight/math.sqrt(had_block_size))
     
     def forward(self, input):
         input = pad_to_block(input, [-1], self.had_block_size)
@@ -67,4 +61,4 @@ class HadLinear(nn.Module):
         input = input.reshape(input.shape[:-1] + (mult, self.had_block_size))
         input = hadamard_transform(input, scale=1/math.sqrt(self.had_block_size))
         input = input.reshape(input.shape[:-2] + (mult * self.had_block_size,))
-        return self.inner(input)
+        return F.linear(input, self.weight)
