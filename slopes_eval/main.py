@@ -590,18 +590,44 @@ def main():
     torch.set_grad_enabled(False)
 
     if args.random_init:
+        def monkeypatch_torch_init():
+            import torch
+            import torch.nn as nn
+            TORCH_INIT_FUNCTIONS = {
+                "uniform_": nn.init.uniform_,
+                "normal_": nn.init.normal_,
+                "trunc_normal_": nn.init.trunc_normal_,
+                "constant_": nn.init.constant_,
+                "xavier_uniform_": nn.init.xavier_uniform_,
+                "xavier_normal_": nn.init.xavier_normal_,
+                "kaiming_uniform_": nn.init.kaiming_uniform_,
+                "kaiming_normal_": nn.init.kaiming_normal_,
+                "uniform": nn.init.uniform,
+                "normal": nn.init.normal,
+                "xavier_uniform": nn.init.xavier_uniform,
+                "xavier_normal": nn.init.xavier_normal,
+                "kaiming_uniform": nn.init.kaiming_uniform,
+                "kaiming_normal": nn.init.kaiming_normal,
+            }
+            for name in TORCH_INIT_FUNCTIONS.keys():
+                def init_zeros(param, *args, **kwargs):
+                    param.data = torch.zeros(param.shape, dtype=torch.float16)
+
+                setattr(torch.nn.init, name, init_zeros)
         import transformers
         def get_random_init_model(model_name):
+            monkeypatch_torch_init()
             config = transformers.AutoConfig.from_pretrained(model_name)
             with transformers.modeling_utils.no_init_weights():
                 model = transformers.AutoModelForCausalLM.from_config(config)
-            for param in model.parameters():
+            import tqdm
+            for param in tqdm.tqdm(list(model.parameters())):
                 param.requires_grad = False
                 param.data.view(-1)[0::2] = 0.1
                 param.data.view(-1)[1::2] = -0.1
                 param.data.view(-1)[0::3] = 0.1
                 param.data.view(-1)[0::4] = -0.1
-            return model.eval().half()
+            return model.eval()
         model = get_random_init_model(args.model)
     else:
         model = AutoModelForCausalLM.from_pretrained(
