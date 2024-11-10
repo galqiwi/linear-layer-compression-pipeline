@@ -611,7 +611,6 @@ def main():
             }
             for name in TORCH_INIT_FUNCTIONS.keys():
                 def init_zeros(param, *args, **kwargs):
-                    print(name)
                     param.data = torch.zeros(param.shape, dtype=torch.float16)
 
                 setattr(torch.nn.init, name, init_zeros)
