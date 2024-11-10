@@ -106,20 +106,26 @@ class HadLinear(nn.Module):
 
         if do_hadamard:
             weight = weight / math.sqrt(blocksize)
-        self.weight = nn.Parameter(weight)
-    
+        self.weight_dtype = weight.dtype
+        out_dim, in_dim = weight.shape
+        self.inner = nn.Linear(in_features=in_dim, out_features=out_dim, bias=False, device='meta')
+        self.inner.weight = nn.Parameter(
+            weight,
+            requires_grad=False,
+        )
+
     def forward(self, input):
         if self.do_hadamard:
             input = pad_to_block(input, [-1], self.blocksize)
             mult = input.shape[-1] // self.blocksize
             input = input.reshape(input.shape[:-1] + (mult, self.blocksize))
-            
+
             if self.actquant != 16:
                 scale = torch.linalg.norm(input, axis=-1, keepdim=True)
                 input = hadamard_transform(input) / scale
                 input = quantize_hadamard(input, self.actquant)
                 input = input * scale / math.sqrt(self.blocksize)
-                input = input.to(self.weight.dtype)
+                input = input.to(self.weight_dtype)
             else:
                 input = hadamard_transform(input, scale=1/math.sqrt(self.blocksize))
 
@@ -129,5 +135,5 @@ class HadLinear(nn.Module):
                 raise NotImplementedError("AAA")
             else:
                 pass
-            
-        return F.linear(input, self.weight)
+
+        return self.inner(input)
