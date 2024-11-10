@@ -403,6 +403,9 @@ def main():
         for layer in layers
     }
 
+    if 'Meta-Llama-3.1-70B' in args.model:
+        config['model.layers.0.self_attn.v_proj'] = (-1, -1)
+
     match args.method:
         case "rtn":
             model = llama_rtn(model, config, args.hadamard_groupsize, DEV)
