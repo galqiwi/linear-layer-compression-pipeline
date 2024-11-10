@@ -442,9 +442,9 @@ def eval_ppl_by_config(args, model, layerwise_edenn_config):
         else:
             ppl = llama_eval(model, dataloader, DEV)
 
-        model.to('meta')
+        model.cpu()
         if orig_model is not None:
-            orig_model.to('meta')
+            orig_model.cpu()
 
         return ppl
 
@@ -504,6 +504,8 @@ def get_df_from_wandb(path):
 
 def get_old_run(args):
     import os
+    if os.environ.get('WANDB_NO_LOAD', '0') == '1':
+        return None
     my_config = vars(args)
     old_runs = get_df_from_wandb(f'{os.environ["WANDB_ENTITY"]}/{os.environ["WANDB_PROJECT"]}')
     old_runs = old_runs[old_runs['Config'] == my_config].copy()
@@ -566,6 +568,10 @@ def main():
         help='calculate KL divergence.'
     )
     parser.add_argument(
+        '--random_init', action='store_true',
+        help='initialize model with random weights.'
+    )
+    parser.add_argument(
         '--nsamples', type=int, default=256,
         help='Number of calibration data samples.'
     )
@@ -580,8 +586,28 @@ def main():
 
     torch.set_grad_enabled(False)
 
-    model = AutoModelForCausalLM.from_pretrained(args.model, torch_dtype=torch.float16, low_cpu_mem_usage=True,
-                                                 device_map="cpu")
+    if args.random_init:
+        import transformers
+        def get_random_init_model(model_name):
+            config = transformers.AutoConfig.from_pretrained(model_name)
+            with transformers.modeling_utils.no_init_weights():
+                model = transformers.AutoModelForCausalLM.from_config(config)
+            for param in model.parameters():
+                param.requires_grad = False
+                param.data.view(-1)[0::2] = 0.1
+                param.data.view(-1)[1::2] = -0.1
+                param.data.view(-1)[0::3] = 0.1
+                param.data.view(-1)[0::4] = -0.1
+            return model.eval().half()
+        model = get_random_init_model(args.model)
+    else:
+        model = AutoModelForCausalLM.from_pretrained(
+            args.model,
+            torch_dtype=torch.float16,
+            low_cpu_mem_usage=True,
+            device_map="cpu"
+        )
+
     model.seqlen = args.seqlen
     model.eval()
 
