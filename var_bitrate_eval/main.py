@@ -271,10 +271,12 @@ def llama_eval(model, dataloader, dev):
 
 def get_zero_shots(model, task_list = ('arc_easy',), num_fewshots=1, batch_size=1):
     import lm_eval
+    from transformers import AutoTokenizer
 
     lm_eval_model = lm_eval.models.huggingface.HFLM(
         pretrained=model,
         batch_size=batch_size,
+        tokenizer=AutoTokenizer.from_pretrained(model.config._name_or_path, use_fast=False),
     )
 
     tasks = lm_eval.tasks.get_task_dict(task_list)
