@@ -265,14 +265,15 @@ def get_model_hidden_states(model, dataloader, dev):
         layer = layers[i].to(dev)
         for j in range(nsamples):
             inps[j] = layer(inps[j], attention_mask=attention_masks[j], position_ids=position_ids[j])[0]
-        layers[i] = layer.cpu()
+        layers[i] = layer.to('meta')
         del layer
+        import gc
+        gc.collect()
         torch.cuda.empty_cache()
 
     hidden_states = inps
 
     model.config.use_cache = use_cache
-    model.cpu()
 
     return hidden_states
 
@@ -308,6 +309,8 @@ def llama_eval(model, dataloader, dev):
 
     hidden_states = get_model_hidden_states(model, dataloader, dev)
     output = get_ppl(model, dataloader, hidden_states)
+
+    model.to('meta')
 
     return output
 
