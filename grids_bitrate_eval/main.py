@@ -508,6 +508,12 @@ def main():
         '--do_hadamard',
         action='store_true', help='Do Hadamard transform.'
     )
+    parser.add_argument(
+        '--zeroshot-batch-size', type=int, required=False, default=1,
+    )
+    parser.add_argument(
+        '--mmlu-batch-size', type=int, required=False, default=1,
+    )
 
     args = parser.parse_args()
 
@@ -558,42 +564,28 @@ def main():
                                                         block_size=args.block_size).cpu()
         linear.cpu()
 
+    from parallel import dispatch_model_parallel
+
     model = model.half()
+    model = model.cpu()
+    print(model)
+    torch.cuda.empty_cache()
 
-    datasets = ['wikitext2']
-    for dataset in datasets:
-        dataloader, testloader = get_loaders(
-            dataset, seed=args.seed, model=args.model, seqlen=model.seqlen
-        )
-        ppl = llama_eval(model, testloader, DEV)
-        wandb.log({f'ppl_wikitext2': ppl})
+    model = dispatch_model_parallel(model, verbose=True)
 
-    if torch.cuda.device_count() > 1:
-        # Inference of Llama2-70b on 3 80GB GPUs
-        import accelerate
-
-        n_devices = torch.cuda.device_count()
-
-        device_map = accelerate.infer_auto_device_map(model, max_memory={device_idx: "40GB" for device_idx in
-                                                                         range(n_devices)},
-                                                      no_split_module_classes=['LlamaDecoderLayer'])
-
-        print(device_map)
-
-        assert 'disk' not in set(device_map.values())
-
-        model = accelerate.dispatch_model(model, device_map=device_map)
-    else:
-        model = model.to(DEV)
-
-    wandb.log(get_zero_shots(model, task_list=['winogrande', 'piqa', 'hellaswag', 'arc_easy', 'arc_challenge'],
-                             num_fewshots=1))
     wandb.log(
         filter_dict(
-            get_zero_shots(model, task_list=['mmlu', ], num_fewshots=5),
+            get_zero_shots(model, task_list=['mmlu', ], num_fewshots=5,
+                           batch_size=args.mmlu_batch_size),
             'mmlu@5'
         )
     )
+    wandb.log(get_zero_shots(
+        model,
+        task_list=['winogrande', 'piqa', 'hellaswag', 'arc_easy', 'arc_challenge'],
+        num_fewshots=1,
+        batch_size=args.zeroshot_batch_size,
+    ))
 
 
 if __name__ == '__main__':
