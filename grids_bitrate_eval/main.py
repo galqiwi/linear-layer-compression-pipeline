@@ -571,6 +571,17 @@ def main():
 
     model = model.half()
     model = model.cpu()
+
+    datasets = ['wikitext2']
+    for dataset in datasets:
+        dataloader, testloader = get_loaders(
+            dataset, seed=args.seed, model=args.model, seqlen=model.seqlen
+        )
+        ppl = llama_eval(model, testloader, DEV)
+        wandb.log({f'ppl_{dataset}': ppl})
+
+    model = model.half()
+    model = model.cpu()
     print(model)
     torch.cuda.empty_cache()
 
