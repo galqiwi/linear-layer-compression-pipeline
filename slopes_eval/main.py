@@ -611,6 +611,7 @@ def main():
             }
             for name in TORCH_INIT_FUNCTIONS.keys():
                 def init_zeros(param, *args, **kwargs):
+                    print(name)
                     param.data = torch.zeros(param.shape, dtype=torch.float16)
 
                 setattr(torch.nn.init, name, init_zeros)
@@ -618,17 +619,20 @@ def main():
         def get_random_init_model(model_name):
             monkeypatch_torch_init()
             config = transformers.AutoConfig.from_pretrained(model_name)
-            with transformers.modeling_utils.no_init_weights():
-                model = transformers.AutoModelForCausalLM.from_config(config)
-            import tqdm
-            for param in tqdm.tqdm(list(model.parameters())):
-                param.requires_grad = False
-                param.data.view(-1)[0::2] = 0.1
-                param.data.view(-1)[1::2] = -0.1
-                param.data.view(-1)[0::3] = 0.1
-                param.data.view(-1)[0::4] = -0.1
-            return model.eval()
+            model = transformers.AutoModelForCausalLM.from_config(config)
+
+            # import tqdm
+            # for param in tqdm.tqdm(list(model.parameters())):
+            #     param.requires_grad = False
+            #     param.data.view(-1)[0::2] = 0.1
+            #     param.data.view(-1)[1::2] = -0.1
+            #     param.data.view(-1)[0::3] = 0.1
+            #     param.data.view(-1)[0::4] = -0.1
+            return model.eval().half()
         model = get_random_init_model(args.model)
+        import collections
+        print(collections.Counter([param.dtype for param in model.parameters()]))
+        print(collections.Counter([param.dtype for param in model.buffers()]))
     else:
         model = AutoModelForCausalLM.from_pretrained(
             args.model,
