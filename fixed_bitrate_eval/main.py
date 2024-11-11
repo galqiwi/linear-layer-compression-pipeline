@@ -405,6 +405,7 @@ def main():
 
     if 'Llama-3.1-70B' in args.model:
         config['model.layers.0.self_attn.v_proj'] = (-1, -1)
+        config['model.layers.3.mlp.down_proj'] = (-1, -1)
 
     match args.method:
         case "rtn":
