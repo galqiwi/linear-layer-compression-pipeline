@@ -122,6 +122,13 @@ def get_grids():
     # grids = get_grids_legacy()
     print(grids)
 
+    grids.append({
+        "mse": 4 ** -16,
+        "bits": 16.0,
+        "edenn_d": -1,
+        "edenn_n": -1,
+    })
+
     grids = pd.DataFrame(grids)
     grids['name'] = grids.apply(
         lambda row: 'edenn_d=' + str(row['edenn_d']) + ';edenn_n=' + str(row['edenn_n']),
