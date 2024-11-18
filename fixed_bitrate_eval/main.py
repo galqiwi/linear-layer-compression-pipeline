@@ -28,6 +28,13 @@ def filter_dict(x, inner):
         if inner.lower() in key.lower()
     }
 
+def filter_dict_options(x, inners):
+    return {
+        key: value
+        for key, value in x.items()
+        if any(inner.lower() in key.lower() for inner in inners)
+    }
+
 
 def find_layers(module, layers=[nn.Linear], name=''):
     if type(module) in layers:
@@ -442,10 +449,10 @@ def main():
 
 
     wandb.log(
-        filter_dict(
+        filter_dict_options(
             get_zero_shots(model, task_list=['mmlu', ], num_fewshots=5,
                            batch_size=args.mmlu_batch_size),
-            'mmlu@5'
+            ('mmlu@5', 'mmlu_err@5')
         )
     )
     wandb.log(get_zero_shots(
