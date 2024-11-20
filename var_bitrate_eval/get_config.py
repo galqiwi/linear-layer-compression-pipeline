@@ -117,7 +117,7 @@ def get_grids_legacy():
 
 def get_grids():
     grids = literal_eval(requests.get(
-        'https://gist.githubusercontent.com/galqiwi/3b5c78a02325facea21411d2e279db94/raw/87b098d77acc7f733e32ef8d067a6a412e8d5ee2/GRIDS_MSE_WITH_KERNELS_2024_10_19'
+        'https://gist.githubusercontent.com/galqiwi/e428cf672253c5e19cd9cf994fae6580/raw/f2d47352e70e6b601536fec9bde9d6ce41255bbd/GRIDS_MSE_WITH_KERNELS_2024_10_19_2_BITS'
     ).text)
     # grids = get_grids_legacy()
     print(grids)
