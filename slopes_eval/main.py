@@ -230,7 +230,8 @@ def get_model_hidden_states(model, dataloader, dev):
     layers = model.model.layers
 
     model.model.embed_tokens = model.model.embed_tokens.to(dev)
-    model.model.rotary_emb = model.model.rotary_emb.to(dev)
+    if hasattr(model.model, 'rotary_emb'):
+        model.model.rotary_emb = model.model.rotary_emb.to(dev)
     layers[0] = layers[0].to(dev)
 
     dtype = next(iter(model.parameters())).dtype
