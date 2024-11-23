@@ -81,7 +81,7 @@ def quantize_linear_layer(layer: nn.Linear, hadamard_groupsize: int, edenn_d: in
     output = HadLinear(weight.half(), hadamard_groupsize)
 
     if layer.bias is not None:
-        output = nn.Sequential([output, Bias(layer.bias)])
+        output = nn.Sequential(output, Bias(layer.bias))
 
     return output, entorpy
 
