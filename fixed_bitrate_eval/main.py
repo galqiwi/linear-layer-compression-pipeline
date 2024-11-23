@@ -78,8 +78,21 @@ def quantize_linear_layer(layer: nn.Linear, hadamard_groupsize: int, edenn_d: in
     
     # Unscale
     weight = (weight * scales[:, :, None]).reshape(weight.shape[0], -1)
-    
-    return HadLinear(weight.half(), hadamard_groupsize), entorpy
+
+    class Bias(nn.Module):
+        def __init__(self, bias):
+            assert bias is not None
+            self.bias = bias
+
+        def forward(self, x):
+            return x + self.bias
+
+    output = HadLinear(weight.half(), hadamard_groupsize)
+
+    if layer.bias is not None:
+        output = nn.Sequential([output, Bias(layer.bias)])
+
+    return output, entorpy
     
 
 @torch.no_grad()
