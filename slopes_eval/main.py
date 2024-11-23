@@ -71,6 +71,7 @@ def quantize_linear_layer(layer: nn.Linear, hadamard_groupsize: int, edenn_d: in
 
     class Bias(nn.Module):
         def __init__(self, bias):
+            super().__init__()
             assert bias is not None
             self.bias = bias
 
