@@ -437,23 +437,8 @@ def main():
             ppl = llama_eval(model, testloader, DEV)
             wandb.log({f'ppl_{dataset}': ppl})
 
-    if torch.cuda.device_count() > 1:
-        # Inference of Llama2-70b on 3 80GB GPUs
-        import accelerate
-
-        n_devices = torch.cuda.device_count()
-
-        device_map = accelerate.infer_auto_device_map(model, max_memory={device_idx: "40GB" for device_idx in
-                                                                         range(n_devices)},
-                                                      no_split_module_classes=['LlamaDecoderLayer'])
-
-        print(device_map)
-
-        assert 'disk' not in set(device_map.values())
-
-        model = accelerate.dispatch_model(model, device_map=device_map)
-    else:
-        model = model.to(DEV)
+    from parallel import dispatch_model_parallel
+    model = dispatch_model_parallel(model)
 
     wandb.log(get_zero_shots(
         model,
