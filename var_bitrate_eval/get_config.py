@@ -159,7 +159,7 @@ def get_config(args):
     slopes_df = get_df_from_wandb(args.slopes_wandb_name)
 
     slopes_df = slopes_df[['test_grid_mse', 'baseline_ppl', 'tag', 'ppl_delta_by_layer_name']]
-    slopes_df = slopes_df[slopes_df['tag'] == args.tag]
+    slopes_df = slopes_df[slopes_df['tag'] == args.slopes_tag]
     slopes_df = slopes_df.dropna()
     slopes_df = slopes_df.copy()
 

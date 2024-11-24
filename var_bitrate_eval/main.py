@@ -341,6 +341,10 @@ def main():
         help='tag for wandb config'
     )
     parser.add_argument(
+        '--slopes_tag', type=str, default="default",
+        help='tag for wandb slopes values'
+    )
+    parser.add_argument(
         '--hadamard_groupsize', type=int, default=1024, choices=[64, 128, 256, 512, 1024, 2048, 4096],
         help='Groupsize to use for hadamard; default is 1024.'
     )
