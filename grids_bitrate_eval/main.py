@@ -518,6 +518,9 @@ def main():
     parser.add_argument(
         '--mmlu-batch-size', type=int, required=False, default=1,
     )
+    parser.add_argument(
+        '--save_path', type=str,
+    )
 
     args = parser.parse_args()
 
@@ -567,6 +570,11 @@ def main():
         linear.weight.data = quantize_dequantize_weight(linear.weight.cuda(), codes=codes.half(),
                                                         block_size=args.block_size).cpu()
         linear.cpu()
+
+    model = model.half().cpu()
+    model.save_pretrained(args.save_path)
+
+    return
 
     from parallel import dispatch_model_parallel
 
