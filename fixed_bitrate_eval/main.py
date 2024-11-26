@@ -398,6 +398,9 @@ def main():
     parser.add_argument(
         '--skip-zeroshots', action='store_true', help='Skip zero-shot evaluations.'
     )
+    parser.add_argument(
+        '--save_path', type=str,
+    )
 
     args = parser.parse_args()
 
@@ -440,7 +443,11 @@ def main():
         case _:
             raise Exception("AAA")
 
-    model = model.half()
+    model = model.half().cpu()
+    model.save_pretrained(args.save_path)
+
+    return
+
     model.cpu()
 
     if not args.skip_ppl_eval:
